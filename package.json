@@ -12,9 +12,7 @@
   "nodemailer": "^6.9.3",
   "node-cron": "^3.0.2",
   "node-fetch": "^3.3.1",
-  "jsbarcode": "^3.11.5",
-  "canvas": "^2.11.2",
-  "chartjs-node-canvas": "^4.1.5"
+  "jsbarcode": "^3.11.5"
 },
   "type": "module"
 }
