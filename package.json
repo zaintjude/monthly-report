@@ -1,18 +1,15 @@
 {
   "name": "monthly-report",
   "version": "1.0.0",
-  "description": "Automated monthly PDF report for PRD Prime",
-  "main": "email.js",
+  "description": "Monthly barcode report generator",
+  "main": "scheduler.js",
   "scripts": {
     "start": "node scheduler.js"
   },
   "dependencies": {
-    "chartjs-node-canvas": "^4.1.6",
-    "jspdf": "^2.6.1",
+    "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.5.28",
-    "nodemailer": "^6.9.4",
+    "nodemailer": "^6.9.3",
     "node-cron": "^3.0.2"
-  },
-  "author": "Jude Dabon",
-  "license": "MIT"
+  }
 }
