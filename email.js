@@ -1,10 +1,9 @@
 import nodemailer from "nodemailer";
 import { jsPDF } from "jspdf";
-import { ChartJSNodeCanvas } from "chartjs-node-canvas";
-import fetch from "node-fetch";
 import autoTable from "jspdf-autotable";
+import fetch from "node-fetch";
 
-// Use this function to fetch scanner.json from your hosting
+// Fetch scanner.json from your hosting
 async function getScannerData() {
   const url = "https://dashproduction.x10.mx/masterfile/scanner/machining/barcode/scanner.json";
   try {
@@ -47,38 +46,14 @@ export async function generateAndSendReport() {
     const topDept = Object.entries(deptTotals).sort((a, b) => b[1] - a[1])[0];
     const topItem = Object.entries(itemTotals).sort((a, b) => b[1] - a[1])[0];
 
-    // --- Charts ---
-    const width = 500;
-    const height = 300;
-    const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height });
-
-    const deptChartConfig = {
-      type: "bar",
-      data: {
-        labels: Object.keys(deptTotals),
-        datasets: [{ label: "Quantity per Department", data: Object.values(deptTotals), backgroundColor: "rgba(54, 162, 235, 0.6)" }]
-      }
-    };
-    const deptImage = await chartJSNodeCanvas.renderToBuffer(deptChartConfig);
-    doc.addImage(deptImage, "PNG", 15, y, 180, 90);
-    y += 95;
-
-    const itemChartConfig = {
-      type: "bar",
-      data: {
-        labels: Object.keys(itemTotals),
-        datasets: [{ label: "Quantity per Item", data: Object.values(itemTotals), backgroundColor: "rgba(255, 99, 132, 0.6)" }]
-      }
-    };
-    const itemImage = await chartJSNodeCanvas.renderToBuffer(itemChartConfig);
-    doc.addPage();
-    y = 10;
-    doc.addImage(itemImage, "PNG", 15, y, 180, 90);
-    y += 95;
-
     // --- Table ---
     const tableData = data.map(d => [d.date, d.item, d.client, d.department, d.qty]);
-    autoTable(doc, { head: [["Date", "Item", "Client", "Department", "Quantity"]], body: tableData, startY: y, styles: { fontSize: 8 } });
+    autoTable(doc, {
+      head: [["Date", "Item", "Client", "Department", "Quantity"]],
+      body: tableData,
+      startY: y,
+      styles: { fontSize: 8 },
+    });
 
     // --- Send Email ---
     const pdfBytes = doc.output("arraybuffer"); // PDF in memory
