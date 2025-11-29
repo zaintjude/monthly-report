@@ -1,162 +1,128 @@
-// email.js
-// Node.js script to generate monthly PDF report and email it
+import fs from "fs";
+import path from "path";
+import nodemailer from "nodemailer";
+import { jsPDF } from "jspdf";
+import JsBarcode from "jsbarcode";
+import { createCanvas } from "canvas";
+import { ChartJSNodeCanvas } from "chartjs-node-canvas";
 
-const fs = require("fs");
-const path = require("path");
-const { jsPDF } = require("jspdf");
-require("jspdf-autotable");
-const ChartjsNode = require("chartjs-node-canvas");
-const nodemailer = require("nodemailer");
+export async function generateAndSendReport() {
+  try {
+    console.log("Generating PDF report...");
 
-// === CONFIGURATION ===
-const senderEmail = "judedabon123@gmail.com"; // your Gmail sender
-const appPassword = "flgjmtgcnmgeyvdw"; // your Gmail App Password (remove spaces)
-const recipients = ["judedabon123@gmail.com", "primeconceptanddesign@gmail.com"];
-const scannerFilePath = path.join(__dirname, "scanner.json");
-const pdfFileName = "monthly-report.pdf";
-const reportMonth = new Date().getMonth() + 1; // current month
-const reportYear = new Date().getFullYear();
+    // Load scanner.json
+    const scannerPath = path.join("./scanner.json");
+    const data = JSON.parse(fs.readFileSync(scannerPath, "utf8"));
 
-// === HELPER FUNCTIONS ===
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    let y = 10;
 
-// Group data by department
-function groupByDepartment(data) {
-    const result = {};
-    data.forEach(item => {
-        const dept = item.department || "Unknown";
-        if (!result[dept]) result[dept] = [];
-        result[dept].push(item);
+    // Title
+    doc.setFontSize(14);
+    doc.text("Monthly Barcode Report", 105, y, { align: "center" });
+    y += 10;
+
+    // --- Data Aggregation ---
+    const monthlyData = data.reduce((acc, d) => {
+      const month = new Date(d.date).toLocaleString("default", { month: "long" });
+      if (!acc[month]) acc[month] = {};
+      if (!acc[month][d.department]) acc[month][d.department] = 0;
+      acc[month][d.department] += d.qty;
+      return acc;
+    }, {});
+
+    // Most delivered item
+    const itemTotals = {};
+    data.forEach(d => {
+      if (!itemTotals[d.item]) itemTotals[d.item] = 0;
+      itemTotals[d.item] += d.qty;
     });
-    return result;
-}
+    const topItem = Object.entries(itemTotals).sort((a, b) => b[1] - a[1])[0];
 
-// Calculate monthly department totals
-function departmentTotals(data) {
-    const totals = {};
-    data.forEach(item => {
-        const date = new Date(item.date);
-        if (date.getMonth() + 1 !== reportMonth || date.getFullYear() !== reportYear) return;
-        const dept = item.department || "Unknown";
-        totals[dept] = (totals[dept] || 0) + Number(item.qty || 0);
+    // Most active department
+    const deptTotals = {};
+    data.forEach(d => {
+      if (!deptTotals[d.department]) deptTotals[d.department] = 0;
+      deptTotals[d.department] += d.qty;
     });
-    return totals;
-}
+    const topDept = Object.entries(deptTotals).sort((a, b) => b[1] - a[1])[0];
 
-// Find highest quantity item
-function highestQtyItem(data) {
-    const items = {};
-    data.forEach(item => {
-        const key = item.item;
-        items[key] = (items[key] || 0) + Number(item.qty || 0);
+    // --- Generate Charts ---
+    const width = 500;
+    const height = 300;
+    const chartCallback = (ChartJS) => {};
+    const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, chartCallback });
+
+    // Department vs Quantity chart
+    const deptChartConfig = {
+      type: "bar",
+      data: {
+        labels: Object.keys(deptTotals),
+        datasets: [{
+          label: "Quantity per Department",
+          data: Object.values(deptTotals),
+          backgroundColor: "rgba(54, 162, 235, 0.6)",
+        }],
+      },
+      options: { plugins: { legend: { display: true } } },
+    };
+    const deptImage = await chartJSNodeCanvas.renderToBuffer(deptChartConfig, "image/png");
+    doc.addImage(deptImage, "PNG", 15, y, 180, 90);
+    y += 95;
+
+    // Item vs Quantity chart
+    const itemChartConfig = {
+      type: "bar",
+      data: {
+        labels: Object.keys(itemTotals),
+        datasets: [{
+          label: "Quantity per Item",
+          data: Object.values(itemTotals),
+          backgroundColor: "rgba(255, 99, 132, 0.6)",
+        }],
+      },
+      options: { plugins: { legend: { display: true } } },
+    };
+    const itemImage = await chartJSNodeCanvas.renderToBuffer(itemChartConfig, "image/png");
+    doc.addPage();
+    y = 10;
+    doc.addImage(itemImage, "PNG", 15, y, 180, 90);
+    y += 95;
+
+    // --- Add Table ---
+    const tableData = data.map(d => [d.date, d.item, d.client, d.department, d.qty]);
+    doc.autoTable({
+      head: [["Date", "Item", "Client", "Department", "Quantity"]],
+      body: tableData,
+      startY: y,
+      styles: { fontSize: 8 },
     });
-    let maxItem = null;
-    let maxQty = 0;
-    for (const [itemName, qty] of Object.entries(items)) {
-        if (qty > maxQty) {
-            maxQty = qty;
-            maxItem = itemName;
-        }
-    }
-    return { item: maxItem, qty: maxQty };
-}
 
-// Generate chart image using Chart.js
-async function generateChartImage(labels, values, title) {
-    const width = 600; 
-    const height = 400; 
-    const chartNode = new ChartjsNode(width, height);
+    const pdfPath = path.join("./monthly-report.pdf");
+    doc.save(pdfPath);
 
-    const config = {
-        type: 'bar',
-        data: {
-            labels,
-            datasets: [{
-                label: title,
-                data: values,
-                backgroundColor: '#004aad'
-            }]
-        },
-        options: {
-            responsive: false,
-            plugins: {
-                legend: { display: false },
-                title: { display: true, text: title, font: { size: 16 } }
-            }
-        }
+    console.log("PDF generated at:", pdfPath);
+
+    // --- Send Email ---
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: "judedabon123@gmail.com, primeconceptanddesign@gmail.com",
+      subject: `Monthly Barcode Report - ${new Date().toLocaleString("default", { month: "long", year: "numeric" })}`,
+      text: `Monthly report attached.\n\nTop Department: ${topDept[0]} (${topDept[1]} units)\nTop Item: ${topItem[0]} (${topItem[1]} units)`,
+      attachments: [{ path: pdfPath }],
     };
 
-    await chartNode.drawChart(config);
-    const buffer = await chartNode.getImageBuffer('image/png');
-    await chartNode.destroy();
-    return buffer;
+    await transporter.sendMail(mailOptions);
+    console.log("Email sent successfully!");
+  } catch (err) {
+    console.error("Error generating or sending report:", err);
+  }
 }
-
-// === MAIN FUNCTION ===
-async function generateAndSendPDF() {
-    try {
-        const rawData = fs.readFileSync(scannerFilePath, "utf8");
-        const data = JSON.parse(rawData);
-
-        const monthlyData = data.filter(item => {
-            const d = new Date(item.date);
-            return d.getMonth() + 1 === reportMonth && d.getFullYear() === reportYear;
-        });
-
-        const deptTotals = departmentTotals(monthlyData);
-        const deptLabels = Object.keys(deptTotals);
-        const deptValues = Object.values(deptTotals);
-
-        const highestItem = highestQtyItem(monthlyData);
-
-        // === CREATE PDF ===
-        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-        doc.setFontSize(16);
-        doc.text(`PRD Prime Monthly Report - ${reportMonth}/${reportYear}`, 10, 15);
-
-        // Add department bar chart
-        const deptChart = await generateChartImage(deptLabels, deptValues, "Quantity per Department");
-        const deptChartData = `data:image/png;base64,${deptChart.toString('base64')}`;
-        doc.addImage(deptChartData, "PNG", 10, 20, 180, 80);
-
-        doc.setFontSize(12);
-        doc.text(`Highest Quantity Item: ${highestItem.item} (${highestItem.qty})`, 10, 110);
-
-        // Table with all monthly items
-        const tableData = monthlyData.map(i => [i.date, i.item, i.client, i.department, i.qty]);
-        doc.autoTable({
-            head: [['Date', 'Item', 'Client', 'Department', 'Qty']],
-            body: tableData,
-            startY: 120,
-            theme: 'grid',
-            headStyles: { fillColor: [0, 74, 173], textColor: 255 },
-            styles: { fontSize: 10 }
-        });
-
-        // Save PDF locally
-        const pdfPath = path.join(__dirname, pdfFileName);
-        doc.save(pdfPath);
-
-        // === SEND EMAIL ===
-        const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: { user: senderEmail, pass: appPassword }
-        });
-
-        await transporter.sendMail({
-            from: `"PRD Prime Reports" <${senderEmail}>`,
-            to: recipients.join(","),
-            subject: `Monthly Barcode Report - ${reportMonth}/${reportYear}`,
-            text: "Attached is the monthly barcode report.",
-            attachments: [
-                { filename: pdfFileName, path: pdfPath }
-            ]
-        });
-
-        console.log("Monthly report generated and emailed successfully!");
-    } catch (err) {
-        console.error("Error generating or sending report:", err);
-    }
-}
-
-// === RUN ===
-generateAndSendPDF();

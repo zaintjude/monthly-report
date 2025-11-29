@@ -1,11 +1,17 @@
-// scheduler.js
-const cron = require("node-cron");
-const path = require("path");
+import cron from "node-cron";
+import { generateAndSendReport } from "./email.js";
 
-// Schedule to run at 17:00 (5 PM) on the 30th of every month
-cron.schedule("0 17 30 * *", () => {
-    console.log("Running monthly report script...");
-    require(path.join(__dirname, "email.js"));
+// Schedule: every day at 5 PM
+cron.schedule("0 17 * * *", () => {
+  const today = new Date();
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+
+  if (today.getDate() === lastDay) {
+    console.log("End-of-month report triggered...");
+    generateAndSendReport();
+  } else {
+    console.log("Not the last day of the month. Skipping report.");
+  }
 });
 
-console.log("Scheduler started. Waiting for the 30th at 5 PM...");
+console.log("Scheduler running...");
