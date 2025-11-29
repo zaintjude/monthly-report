@@ -7,6 +7,7 @@
     "start": "node scheduler.js"
   },
   "dependencies": {
+  "chartjs-node-canvas": "^5.1.2", 
   "jspdf": "^2.5.1",
   "jspdf-autotable": "^3.5.28",
   "nodemailer": "^6.9.3",
